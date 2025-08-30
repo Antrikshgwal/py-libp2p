@@ -118,7 +118,7 @@ class BasicHost(IHost):
             self.get_private_key(),
         )
         self.get_peerstore().set_local_record(envelope)
-        
+
     def get_id(self) -> ID:
         """
         :return: peer_id of host
