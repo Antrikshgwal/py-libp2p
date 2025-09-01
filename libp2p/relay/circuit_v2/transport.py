@@ -27,6 +27,7 @@ from libp2p.peer.id import (
 from libp2p.peer.peerinfo import (
     PeerInfo,
 )
+from libp2p.peer.peerstore import env_to_send_in_RPC
 from libp2p.tools.async_service import (
     Service,
 )
@@ -51,9 +52,6 @@ from .protocol_buffer import (
 )
 from .utils import (
     maybe_consume_signed_record,
-)
-from libp2p.peer.peerstore import (
-    env_to_send_to_RPC
 )
 
 logger = logging.getLogger("libp2p.relay.circuit_v2.transport")
@@ -179,7 +177,7 @@ class CircuitV2Transport(ITransport):
                     )
 
             # Create signed peer record to send with the HOP message
-            envelope_bytes, _ = env_to_send_to_RPC(self.host)
+            envelope_bytes, _ = env_to_send_in_RPC(self.host)
 
             # Send HOP CONNECT message
             hop_msg = HopMessage(
@@ -196,11 +194,9 @@ class CircuitV2Transport(ITransport):
 
             # Consume the source signed_peer_record
             if not maybe_consume_signed_record(resp, self.host, relay_peer_id):
-                logger.error(
-                    "Received an invalid-signed-record, dropping the stream"
-                )
+                logger.error("Received an invalid-signed-record, dropping the stream")
                 await relay_stream.close()
-                return
+                raise ConnectionError("Invalid signed record from relay")
 
             # Access status attributes directly
             status_code = getattr(resp.status, "code", StatusCode.OK)
@@ -269,8 +265,7 @@ class CircuitV2Transport(ITransport):
 
         """
         try:
-
-            envelope_bytes, _ = env_to_send_to_RPC(self.host)
+            envelope_bytes, _ = env_to_send_in_RPC(self.host)
             # Send reservation request
             reserve_msg = HopMessage(
                 type=HopMessage.RESERVE,
@@ -285,11 +280,9 @@ class CircuitV2Transport(ITransport):
             resp.ParseFromString(resp_bytes)
 
             if not maybe_consume_signed_record(resp, self.host, relay_peer_id):
-                logger.error(
-                    "Received an invalid-signed-record, dropping the stream"
-                )
+                logger.error("Received an invalid-signed-record, dropping the stream")
                 await stream.close()
-                return
+                return False
 
             # Access status attributes directly
             status_code = getattr(resp.status, "code", StatusCode.OK)
@@ -398,11 +391,9 @@ class CircuitV2Listener(Service, IListener):
             stop_msg.ParseFromString(msg_bytes)
 
             if not maybe_consume_signed_record(stop_msg, self.host, remote_peer_id):
-                logger.error(
-                    "Received an invalid-signed-record, dropping the stream"
-                )
+                logger.error("Received an invalid-signed-record, dropping the stream")
                 await stream.close()
-                return
+                raise ConnectionError("Invalid signed record")
 
             if stop_msg.type != StopMessage.CONNECT:
                 raise ConnectionError("Invalid STOP message type")
